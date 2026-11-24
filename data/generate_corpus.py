@@ -243,7 +243,7 @@ INDUSTRIES: dict[str, dict] = {
 # Fictional clients only.
 CLIENTS = {
     "Pharmaceuticals": ["Quillfeather Pharma", "Orrin Therapeutics"],
-    "Retail": ["Halvorsen Retail", "Marlow & Finch Stores"],
+    "Retail": ["Halvorsen Retail"],
     "Banking": ["Bluepeak Bank", "Ostrava Capital", "Quenmoor Bank"],
     "Energy": ["Corvane Energy", "Sundial Power"],
     "Automotive": ["Ardent Motors", "Kestrel Auto Group"],
