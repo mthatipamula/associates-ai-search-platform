@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is git-ignored.
+
+aws_region  = "us-east-1"
+environment = "demo"
+
+# REQUIRED: who may open the app. Find your IP with: curl -s https://checkip.amazonaws.com
+allowed_ingress_cidrs = ["203.0.113.7/32"]
+
+# Optional HTTPS: an ACM certificate in the same region for a domain you own.
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+
+# Claude on Amazon Bedrock (enable model access in the Bedrock console first).
+llm_provider = "none" # or "bedrock"
+
+# Set false if your AWS account already has the GitHub OIDC provider.
+create_github_oidc_provider = true
+github_repository           = "mthatipamula/associates-ai-search-platform"

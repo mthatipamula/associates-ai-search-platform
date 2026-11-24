@@ -1,0 +1,52 @@
+#!/bin/bash
+# Elasticsearch host bootstrap (Amazon Linux 2023, ECS-optimized AMI).
+# 1. Kernel setting Elasticsearch requires.
+# 2. Attach and mount the persistent data volume at /esdata.
+# 3. Join the ECS cluster, advertising esdata=mounted so the Elasticsearch
+#    service is only placed here once its data disk is ready.
+set -euo pipefail
+
+sysctl -w vm.max_map_count=262144
+echo "vm.max_map_count=262144" > /etc/sysctl.d/99-elasticsearch.conf
+
+command -v aws >/dev/null || dnf install -y awscli-2
+
+TOKEN=$(curl -sX PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+
+# The volume may still be detaching from a replaced instance: retry.
+for i in $(seq 1 30); do
+  if aws ec2 attach-volume --region "${region}" --volume-id "${volume_id}" \
+       --instance-id "$INSTANCE_ID" --device /dev/xvdf; then
+    break
+  fi
+  sleep 10
+done
+
+# On Nitro instances the disk appears as /dev/nvmeXn1; find it by serial
+# number (the volume id without the dash).
+SERIAL=$(echo "${volume_id}" | tr -d '-')
+DEV=""
+for i in $(seq 1 60); do
+  DEV=$(lsblk -dno NAME,SERIAL | awk -v s="$SERIAL" '$2==s {print "/dev/"$1}')
+  [ -n "$DEV" ] && break
+  [ -b /dev/xvdf ] && DEV=/dev/xvdf && break
+  sleep 5
+done
+[ -n "$DEV" ] || { echo "data volume did not appear"; exit 1; }
+
+# Format only a brand-new (empty) volume.
+blkid "$DEV" || mkfs.xfs "$DEV"
+mkdir -p /esdata
+mount "$DEV" /esdata
+UUID=$(blkid -s UUID -o value "$DEV")
+grep -q "$UUID" /etc/fstab || echo "UUID=$UUID /esdata xfs defaults,nofail 0 2" >> /etc/fstab
+chown 1000:0 /esdata  # the elasticsearch user in the official image
+
+cat >> /etc/ecs/ecs.config <<CFG
+ECS_CLUSTER=${cluster_name}
+ECS_AWSVPC_BLOCK_IMDS=true
+ECS_INSTANCE_ATTRIBUTES={"esdata":"mounted"}
+CFG
+
+systemctl restart --no-block ecs

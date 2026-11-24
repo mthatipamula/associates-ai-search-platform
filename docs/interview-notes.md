@@ -141,6 +141,24 @@ agentic capabilities **on top of the existing platform**.
 
 ---
 
+### Running it on AWS (this repo deploys with Terraform)
+
+- **Shape:** ALB → ECS Fargate (stateless API, scales on CPU) → Elasticsearch in private subnets.
+  Secrets in Secrets Manager, logs in CloudWatch, images in ECR with scan-on-push.
+- **Why Elasticsearch on EC2, not Fargate:** it needs `vm.max_map_count` raised on the host and durable,
+  fast disk. The demo runs one node with an encrypted EBS volume that's re-attached if the instance is
+  replaced. Production would be 3 nodes across AZs (or Elastic Cloud on AWS), with S3 snapshots.
+- **The index is derived data:** it can always be rebuilt from source with a one-off Fargate task (the same
+  image, a different command). That's the real disaster-recovery path, not the disk.
+- **Delivery:** GitHub Actions with **OIDC**, so there are no AWS keys in GitHub. Only `main` of this repo
+  can assume the deploy role, and it can only push one ECR repo and update one ECS service. A circuit
+  breaker rolls back a bad image automatically.
+- **Security defaults:** nothing public except the ALB (IP allow-list in the demo; corporate SSO via ALB
+  OIDC auth in production), IMDSv2 only, no SSH (Session Manager), least-privilege roles, and Bedrock
+  permissions only when the LLM is switched on.
+- **Tested offline:** `terraform test` with a mocked AWS provider checks the security-relevant settings
+  in CI without credentials.
+
 ## 4. "117k documents: is that big?"
 
 - No. At roughly 1 to 2M chunks and single-digit GB of vectors after quantisation, it fits on a small

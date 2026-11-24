@@ -76,8 +76,16 @@ def _to_request(body: SearchBody, user: User, query: str | None = None) -> tuple
     return req, understood
 
 
+@app.get("/healthz")
+def healthz():
+    """Liveness for the load balancer: the process is up. Does not call
+    Elasticsearch, so a search-cluster blip doesn't make ECS kill API tasks."""
+    return {"status": "ok"}
+
+
 @app.get("/health")
 def health():
+    """Readiness / diagnostics: checks Elasticsearch and the index."""
     es = get_es()
     info = es.info()
     count = es.count(index=settings.index_alias)["count"] if es.indices.exists_alias(name=settings.index_alias) else 0

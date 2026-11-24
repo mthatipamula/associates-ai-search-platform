@@ -1,0 +1,57 @@
+name: Deploy to AWS
+
+# Runs after merges to main, and on demand (Actions tab > Deploy to AWS >
+# Run workflow), where you can also rebuild the search index.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Rebuild the Elasticsearch index after deploying
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC token -> short-lived AWS credentials
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build, push and deploy
+    runs-on: ubuntu-latest
+    # Skipped until the AWS repository variables are configured (see docs/aws-deployment.md).
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    # No `environment:` here: it would change the OIDC subject claim to
+    # environment:<name>, which the AWS role's trust policy does not accept.
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_TASK_FAMILY: ${{ vars.ECS_TASK_FAMILY }}
+      PRIVATE_SUBNET_IDS: ${{ vars.PRIVATE_SUBNET_IDS }}
+      API_SECURITY_GROUP_ID: ${{ vars.API_SECURITY_GROUP_ID }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Build and push image to ECR
+        run: scripts/aws.sh build-push
+
+      - name: Deploy to ECS
+        run: scripts/aws.sh deploy
+
+      - name: Rebuild search index
+        if: inputs.seed == true
+        run: scripts/aws.sh seed
