@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knowledge Search</title>
+<style>
+  :root { --bg:#f7f7f5; --panel:#fff; --ink:#1d2433; --muted:#667085; --line:#e4e4e0; --accent:#0f6e56; --mark:#fff2a8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14161a; --panel:#1c1f25; --ink:#e6e8eb; --muted:#9aa3b2; --line:#2c3038; --accent:#46b38f; --mark:#5c4f00; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); background:var(--panel); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  header small { color:var(--muted); }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:16px 24px; }
+  input[type=text] { flex:1 1 380px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); font-size:15px; }
+  select, button { padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--ink); font-size:14px; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); cursor:pointer; }
+  .tabs { display:flex; gap:4px; padding:0 24px; }
+  .tabs button { border-radius:8px 8px 0 0; border-bottom:none; cursor:pointer; }
+  .tabs button.on { background:var(--accent); color:#fff; }
+  main { display:grid; grid-template-columns: 240px 1fr; gap:20px; padding:16px 24px 48px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; padding:16px; } .bar, header, .tabs { padding-left:16px; padding-right:16px; } }
+  aside h3 { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:16px 0 6px; }
+  aside label { display:flex; justify-content:space-between; gap:8px; font-size:13px; cursor:pointer; padding:2px 0; }
+  aside label span:last-child { color:var(--muted); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .card h2 { font-size:16px; margin:0 0 4px; }
+  .meta { color:var(--muted); font-size:13px; }
+  .pill { display:inline-block; font-size:12px; padding:1px 8px; border-radius:999px; border:1px solid var(--line); margin-right:4px; }
+  .restricted { border-color:#c2410c; color:#c2410c; }
+  mark { background:var(--mark); color:inherit; padding:0 1px; }
+  .status { color:var(--muted); font-size:13px; margin-bottom:10px; }
+  pre { white-space:pre-wrap; word-break:break-word; font-size:12px; background:var(--bg); padding:8px; border-radius:6px; max-height:260px; overflow:auto; }
+  .answer { white-space:pre-wrap; }
+  .turn { border-left:3px solid var(--accent); }
+  .turn.old { opacity:.75; border-left-color:var(--line); }
+  .q { font-weight:600; margin-bottom:4px; }
+  details summary { cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Knowledge Portfolio search</h1>
+  <small>Demo: hybrid search, answers with citations and agentic research on fictional documents</small>
+  <span style="flex:1"></span>
+  <label class="meta" title="Demo stand-in for single sign-on: every user is an associate; access depends on client staffing">Viewing as
+    <select id="user"></select>
+  </label>
+</header>
+
+<div class="tabs">
+  <button data-tab="search" class="on">Search</button>
+  <button data-tab="ask">Ask (RAG)</button>
+  <button data-tab="agent">Agent</button>
+</div>
+
+<div class="bar">
+  <input id="q" type="text" placeholder="e.g. store formats for grocers" value="branch and digital banking case studies">
+  <select id="mode" title="Retrieval mode">
+    <option value="hybrid">Hybrid (RRF)</option>
+    <option value="bm25">Keyword (BM25)</option>
+    <option value="vector">Semantic (kNN)</option>
+    <option value="hybrid_native">Hybrid (ES rrf retriever)</option>
+  </select>
+  <label class="meta"><input type="checkbox" id="rerank"> Re-rank</label>
+  <label class="meta"><input type="checkbox" id="auto" checked> Auto-filters</label>
+  <button class="primary" id="go">Search</button>
+  <button id="reset" style="display:none" title="Forget earlier questions">New conversation</button>
+</div>
+
+<main>
+  <aside id="facets"></aside>
+  <section id="out"></section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let tab = "search";
+const selected = {};  // facet -> Set(values)
+let thread = [];      // Ask tab conversation: [{q, r}]
+
+// Example questions per persona, so each demo starts somewhere meaningful.
+const EXAMPLES = {
+  default: {search: "branch and digital banking case studies",
+            ask: "How have we helped banks move customers to digital channels?",
+            agent: "Who are our experts on retail banking, and what did their projects achieve?"},
+  "associate-healthcare": {search: "Wrenfield cardiology",
+            ask: "Where is Wrenfield North Hospital located?",
+            agent: "Does Wrenfield Lakeside offer cardiology?"},
+};
+const example = () => (EXAMPLES[$("#user").value] || EXAMPLES.default)[tab];
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const safeHighlight = (s) => esc(s).replace(/&lt;mark&gt;/g, "<mark>").replace(/&lt;\/mark&gt;/g, "</mark>");
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: {"Content-Type": "application/json", "X-Demo-User": $("#user").value},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+function filters() {
+  const f = {};
+  for (const [k, set] of Object.entries(selected)) if (set.size) f[k] = [...set];
+  return f;
+}
+
+function renderFacets(facets, understood) {
+  const names = {client: "Client", facility: "Facility", service_lines: "Service line", practice: "Practice", industry: "Industry", doc_type: "Document type", region: "Region", authors: "Experts"};
+  let html = "";
+  const boosts = understood?.boosts || {};
+  if (understood && (Object.keys(understood.filters).length || understood.date_from || Object.keys(boosts).length || (understood.corrections || []).length)) {
+    html += `<h3>Understood from query</h3><div class="meta">`;
+    if (Object.keys(boosts).length) html += `About: ${esc(Object.values(boosts).flat().join(", "))}<br>`;
+    for (const c of understood.corrections || []) html += `Read "${esc(c.typed)}" as ${esc(c.understood_as)}<br>`;
+    if (Object.keys(understood.filters).length) html += `Filters: ${esc(JSON.stringify(understood.filters))}<br>`;
+    if (understood.date_from) html += `From ${esc(understood.date_from)}<br>`;
+    html += `</div>`;
+  }
+  for (const [k, label] of Object.entries(names)) {
+    const buckets = facets[k] || [];
+    if (!buckets.length) continue;
+    html += `<h3>${label}</h3>`;
+    for (const b of buckets.slice(0, 8)) {
+      const on = selected[k]?.has(b.value) ? "checked" : "";
+      html += `<label><span><input type="checkbox" data-f="${k}" value="${esc(b.value)}" ${on}> ${esc(b.value)}</span><span>${b.count}</span></label>`;
+    }
+  }
+  $("#facets").innerHTML = html;
+  $("#facets").querySelectorAll("input[data-f]").forEach(cb => cb.onchange = () => {
+    const k = cb.dataset.f; selected[k] ??= new Set();
+    cb.checked ? selected[k].add(cb.value) : selected[k].delete(cb.value);
+    run();
+  });
+}
+
+function resultCard(d) {
+  const ranks = Object.entries(d.ranks || {}).map(([k, v]) => `${k} #${v}`).join(", ");
+  const p = d.passages[0];
+  const snippet = p.highlight ? safeHighlight(p.highlight) : esc(p.text.slice(0, 260)) + "...";
+  return `<div class="card">
+    <h2>${esc(d.title)}</h2>
+    <div class="meta">${esc(d.doc_id)} · ${esc(d.published_date)} · ${esc(d.authors.join(", "))}</div>
+    <div style="margin:6px 0">
+      <span class="pill">${esc(d.doc_type)}</span><span class="pill">${esc(d.practice)}</span><span class="pill">${esc(d.industry)}</span>
+      ${d.client ? `<span class="pill">${esc(d.client)}</span>` : ""}
+      ${d.confidentiality === "client-restricted" ? `<span class="pill restricted">client-restricted</span>` : ""}
+    </div>
+    <div>${snippet}</div>
+    <div class="meta" style="margin-top:6px">score ${d.score.toFixed(4)}${ranks ? " · " + ranks : ""}</div>
+  </div>`;
+}
+
+async function run() {
+  const q = $("#q").value.trim();
+  $("#out").innerHTML = `<div class="status">Working...</div>`;
+  const body = {query: q, mode: $("#mode").value, rerank: $("#rerank").checked, auto_filters: $("#auto").checked, filters: filters()};
+  try {
+    if (tab === "search") {
+      const r = await api("/api/search", body);
+      renderFacets(r.facets, r.understood);
+      $("#out").innerHTML = `<div class="status">${r.results.length} documents · ${esc(r.mode)} · ${esc(JSON.stringify(r.timings))} ${r.notes.map(esc).join(" ")}</div>` + r.results.map(resultCard).join("");
+    } else if (tab === "ask") {
+      // Send earlier questions so follow-ups ("Is cardiology supported there?") work.
+      const r = await api("/api/ask", {...body, history: thread.map(t => t.q)});
+      thread.push({q, r});
+      renderFacets(r.search.facets, r.understood);
+      const turns = thread.map((t, i) => {
+        const latest = i === thread.length - 1;
+        const fixes = (t.r.understood?.corrections || []).map(c => `Read "${esc(c.typed)}" as ${esc(c.understood_as)}`);
+        if (t.r.standalone_question !== t.q) fixes.unshift(`Understood as: ${esc(t.r.standalone_question)}`);
+        const rewritten = fixes.length ? `<div class="meta">${fixes.join(" · ")}</div>` : "";
+        return `<div class="card turn ${latest ? "" : "old"}"><div class="q">${esc(t.q)}</div>${rewritten}<div class="answer">${esc(t.r.answer)}</div></div>`;
+      }).join("");
+      const last = thread[thread.length - 1].r;
+      $("#out").innerHTML = turns + `<div class="status">Sources for the latest answer</div>` +
+        last.citations.map(c => `<div class="card"><strong>[${c.n}] ${esc(c.title)}</strong><div class="meta">${esc(c.doc_id)} · ${esc(c.published_date)} · ${esc(c.source_uri)}</div><div>${esc(c.text)}</div></div>`).join("");
+      $("#q").value = "";
+      $("#q").placeholder = "Ask a follow-up, e.g. Is cardiology supported there?";
+    } else {
+      const r = await api("/api/agent", {question: q});
+      $("#facets").innerHTML = `<h3>Planner</h3><div class="meta">${esc(r.planner)}: ${r.trace.length} tool calls</div>`;
+      $("#out").innerHTML = `<div class="card"><div class="meta">Agent answer</div><div class="answer">${esc(r.answer)}</div></div>` +
+        r.trace.map(t => `<div class="card"><details><summary><strong>Step ${t.step}: ${esc(t.tool)}</strong> <span class="meta">${esc(JSON.stringify(t.input))}</span></summary><pre>${esc(JSON.stringify(t.output, null, 2))}</pre></details></div>`).join("");
+    }
+  } catch (e) {
+    $("#out").innerHTML = `<div class="card">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); tab = b.dataset.tab;
+  thread = [];
+  $("#q").value = example();
+  $("#go").textContent = tab === "search" ? "Search" : tab === "ask" ? "Ask" : "Run agent";
+  $("#reset").style.display = tab === "ask" ? "" : "none";
+  run();
+});
+$("#go").onclick = run;
+$("#q").onkeydown = (e) => { if (e.key === "Enter") run(); };
+$("#reset").onclick = () => { thread = []; $("#q").value = example(); run(); };
+$("#user").onchange = () => { for (const k in selected) selected[k].clear(); thread = []; $("#q").value = example(); run(); };
+
+(async () => {
+  const users = await fetch("/api/users").then(r => r.json());
+  $("#user").innerHTML = Object.entries(users).map(([u, p]) => `<option value="${esc(u)}" title="groups: ${esc(p.groups.join(", "))}">${esc(p.label)}</option>`).join("");
+  run();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+[
+  {"query": "complaint handling and onboarding for insurers", "practice": "Customer Experience", "industry": "Insurance"},
+  {"query": "post-merger integration synergy tracking", "practice": "Mergers & Acquisitions"},
+  {"query": "LLM copilots for bank employees", "practice": "Generative AI", "industry": "Banking"},
+  {"query": "decarbonisation plan for a bank", "practice": "Sustainability", "industry": "Banking"},
+  {"query": "digital account opening and branch network redesign for a lender", "practice": "Banking"},
+  {"query": "zero-based budgeting case study", "practice": "Cost Reduction", "doc_type": "case_summary"},
+  {"query": "dynamic pricing for insurers", "practice": "Pricing", "industry": "Insurance"},
+  {"query": "anti money laundering transaction monitoring", "practice": "Risk & Compliance"},
+  {"query": "moving legacy mainframe applications to the cloud", "practice": "Digital Transformation"},
+  {"query": "organisation redesign and decision rights", "practice": "Operating Model"},
+  {"query": "click and collect and store formats for a grocer", "practice": "Retail"},
+  {"query": "bank overhead efficiency programme", "practice": "Cost Reduction", "industry": "Banking"},
+  {"query": "guardrails and human review for AI generated content", "practice": "Generative AI"},
+  {"query": "insurance pricing benchmark report", "practice": "Pricing", "industry": "Insurance", "doc_type": "industry_report"},
+  {"query": "agile delivery and digital services for government", "practice": "Digital Transformation", "industry": "Public Sector"},
+  {"query": "M&A due diligence for an insurance acquisition", "practice": "Mergers & Acquisitions", "industry": "Insurance"},
+  {"query": "Where is Wrenfield North Hospital located?", "facility": "Wrenfield North Hospital", "doc_type": "facility_profile"},
+  {"query": "Is cardiology offered at Wrenfield Lakeside?", "facility": "Wrenfield Lakeside Hospital", "doc_type": "facility_profile"},
+  {"query": "Tamsin Bay Community Hospital heart attack care", "facility": "Tamsin Bay Community Hospital", "doc_type": "facility_profile"},
+  {"query": "cardiology growth project for Wrenfield", "client": "Wrenfield Health", "doc_type": "case_summary"},
+  {"query": "Tamsin Bay rehabilitation network plans", "client": "Tamsin Bay Health System", "doc_type": "proposal"}
+]
