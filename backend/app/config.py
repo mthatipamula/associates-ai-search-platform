@@ -15,6 +15,9 @@ class Settings:
     # --- Elasticsearch -----------------------------------------------------
     es_url: str = _env("ES_URL", "http://localhost:9200")
     es_api_key: str | None = os.getenv("ES_API_KEY") or None
+    # Basic auth (used on AWS, where the password comes from Secrets Manager).
+    es_username: str | None = os.getenv("ES_USERNAME") or None
+    es_password: str | None = os.getenv("ES_PASSWORD") or None
     # Queries and the app always go through the alias; ingest builds a new
     # versioned index behind it and swaps atomically (blue/green reindex).
     index_alias: str = _env("INDEX_ALIAS", "kp-chunks")

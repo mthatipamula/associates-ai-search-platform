@@ -4,3 +4,12 @@ __pycache__/
 .pytest_cache/
 .venv/
 .DS_Store
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+infra/terraform/terraform.tfvars
+infra/terraform/backend.hcl

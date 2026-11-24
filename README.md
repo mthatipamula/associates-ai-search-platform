@@ -26,7 +26,7 @@ All documents, clients, companies and people in this repo are **fictional** and 
 
 Docs:
 - [docs/architecture.md](docs/architecture.md): system design, request flows, trade-offs
-- [docs/aws-deployment.md](docs/aws-deployment.md): how this maps to AWS (Elastic Cloud on AWS or OpenSearch Service, Bedrock, ECS/Lambda, S3)
+- [docs/aws-deployment.md](docs/aws-deployment.md): **deploy it to AWS** (Terraform + GitHub Actions), and the reference design for an enterprise rollout
 - [docs/performance.md](docs/performance.md): sizing and tuning for ~117k documents
 - [docs/interview-notes.md](docs/interview-notes.md): talking points and questions
 
@@ -72,6 +72,23 @@ make test    # unit tests (no Elasticsearch or LLM needed)
 ```bash
 make kibana  # optional Kibana on http://localhost:5601
 ```
+
+### Deploying to AWS
+
+`infra/terraform/` creates a VPC, an Application Load Balancer, the API on ECS Fargate, a self-managed
+Elasticsearch node on ECS/EC2 with an encrypted EBS data volume, ECR, Secrets Manager, CloudWatch Logs
+and a GitHub OIDC deploy role. `.github/workflows/` runs tests and Terraform checks on every pull request
+and deploys on every merge to `main`. The full runbook is in [docs/aws-deployment.md](docs/aws-deployment.md):
+
+```bash
+make aws-init && make aws-plan && make aws-apply   # infrastructure
+```
+
+```bash
+make aws-deploy && make aws-seed && make aws-url   # image, index, URL
+```
+
+It costs about $5 a day while running; `make aws-destroy` removes everything.
 
 ### Turning on the LLM (Claude)
 
@@ -144,6 +161,9 @@ backend/tests/     unit tests (no Elasticsearch needed)
 data/              fictional corpus generator and generated documents.jsonl
 eval/              judged queries, evaluation script and latest results
 docs/              architecture, AWS deployment, performance, interview notes
+infra/terraform/   AWS infrastructure (VPC, ALB, ECS Fargate + EC2, ECR, IAM, GitHub OIDC) and offline plan tests
+scripts/aws.sh     build, push, deploy and seed (shared by GitHub Actions and the Makefile)
+.github/workflows/ CI (tests, Terraform, image build) and deploy-on-merge
 ```
 
 ## Notes

@@ -22,15 +22,16 @@ services:
       elasticsearch: {condition: service_healthy}
 
   api:
-    build: {context: ., dockerfile: backend/Dockerfile}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args: {INSTALL_DEV: "true", PRELOAD_MODELS: "true"}
     env_file: [.env]
     environment:
       - ES_URL=http://elasticsearch:9200
     ports: ["8000:8000"]
-    volumes: [models:/models]
     depends_on:
       elasticsearch: {condition: service_healthy}
 
 volumes:
   esdata:
-  models:
