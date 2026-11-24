@@ -73,10 +73,6 @@ class Settings:
                 "label": "Associate on Quenmoor Bank team (banking)",
                 "groups": ["all-staff", "client-quenmoor-bank"],
             },
-            "associate-retail": {
-                "label": "Associate on Marlow & Finch Stores team (retail)",
-                "groups": ["all-staff", "client-marlow-and-finch-stores"],
-            },
             "knowledge-team": {
                 "label": "Knowledge team (curates all content)",
                 "groups": ["all-staff", "knowledge-team"],
